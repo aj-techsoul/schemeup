@@ -1,0 +1,13 @@
+i want to create an app which will search the scheme suitable for logged in user.
+
+the backend will be scrapping many websites for government jobs, funding, rules, grant schemes etc. 
+and save in the database with keywords.
+use sqlitedb for database and use react, nextjs, tailwindcss for client and backend scrapping use go or python whichever is good. 
+
+project app name is "schemeup"
+Created by "Beautifull Lino & Sweetypie Rosa"
+Supervised by "Handsome, Good looking, Genius, Self obsessed lover, PB AJ"
+
+also do a pwa app and ask for installing.
+make sure host with https enabled
+

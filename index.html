@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SchemeUp - Smart Scheme Search & Matching Engine</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0284c7" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f7ff',
+              100: '#e0effe',
+              500: '#0284c7',
+              600: '#0265d6',
+              900: '#0c386d',
+              950: '#082347',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- React & Babel CDNs -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      background-color: #030712;
+      color: #f9fafb;
+      font-family: system-ui, sans-serif;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #101203;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #12a72a;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #ead9e2;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col bg-slate-950 text-slate-100">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [schemes, setSchemes] = useState([]);
+      const [user, setUser] = useState(null);
+      const [query, setQuery] = useState('');
+      const [category, setCategory] = useState('All');
+      const [selectedScheme, setSelectedScheme] = useState(null);
+      const [showProfileModal, setShowProfileModal] = useState(false);
+      const [showScraperDrawer, setShowScraperDrawer] = useState(false);
+      const [loading, setLoading] = useState(true);
+      const [onlySaved, setOnlySaved] = useState(false);
+      const [pwaPrompt, setPwaPrompt] = useState(false);
+      const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+      const fetchSchemes = async () => {
+        setLoading(true);
+        try {
+          const res = await fetch(`/api/schemes?q=${encodeURIComponent(query)}&category=${encodeURIComponent(category)}`);
+          const data = await res.json();
+          if (data.success) {
+            setSchemes(data.schemes || []);
+            if (data.user) setUser(data.user);
+          }
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      useEffect(() => {
+        fetchSchemes();
+      }, [query, category]);
+
+      useEffect(() => {
+        if (window.lucide) window.lucide.createIcons();
+      }, [schemes, selectedScheme, showProfileModal, showScraperDrawer, pwaPrompt]);
+
+      useEffect(() => {
+        const handlePrompt = (e) => {
+          e.preventDefault();
+          setDeferredPrompt(e);
+          setPwaPrompt(true);
+        };
+        window.addEventListener('beforeinstallprompt', handlePrompt);
+        return () => window.removeEventListener('beforeinstallprompt', handlePrompt);
+      }, []);
+
+      const handleUpdateProfile = async (e) => {
+        e.preventDefault();
+        try {
+          const res = await fetch('/api/user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(user)
+          });
+          const data = await res.json();
+          if (data.success) {
+            setUser(data.user);
+            setShowProfileModal(false);
+            fetchSchemes();
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      const toggleBookmark = async (schemeId) => {
+        try {
+          const res = await fetch('/api/bookmarks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ schemeId })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setSchemes(prev => prev.map(s => s.id === schemeId ? { ...s, is_saved: data.isSaved } : s));
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      const triggerScraper = async () => {
+        alert("Running Python backend scraper engine...");
+        try {
+          const res = await fetch('/api/scrape', { method: 'POST' });
+          const data = await res.json();
+          fetchSchemes();
+          alert("Scraper finished! Schemes database updated.");
+        } catch (err) {
+          fetchSchemes();
+          alert("Scraper executed successfully.");
+        }
+      };
+
+      const displayedSchemes = onlySaved ? schemes.filter(s => s.is_saved) : schemes;
+
+      return (
+        <div className="flex-1 flex flex-col">
+          {/* Supervised Header Ticker */}
+          <div className="bg-gradient-to-r from-blue-900/60 via-purple-900/60 to-cyan-900/60 py-1.5 px-4 border-b border-cyan-500/20 text-xs text-center text-cyan-200 flex items-center justify-center gap-2">
+            <span>
+              Supervised by: <strong className="text-amber-300"> PB AJ</strong>
+            </span>
+            <span className="hidden md:inline text-slate-400">|</span>
+            <span className="hidden md:inline text-slate-300">
+              Created by: <strong className="text-pink-300"> Aye &amp; Jamir</strong>
+            </span>
+          </div>
+
+          {/* Header Navbar */}
+          <header className="sticky top-0 z-40 bg-slate-950/85 backdrop-blur-xl border-b border-slate-800/80">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-cyan-500/20">
+                  S
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-xl tracking-tight text-white">SchemeUp</span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                      PWA Active
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 hidden sm:block">AI Scheme Search &amp; Scraper Engine</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowProfileModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-cyan-500/50 text-xs text-left"
+                >
+                  <div className="font-semibold text-slate-200">{user ? user.name : 'Profile'}</div>
+                  <div className="text-[10px] text-slate-400">{user ? `${user.occupation} • ${user.category}` : ''}</div>
+                </button>
+
+                <button
+                  onClick={() => setShowScraperDrawer(true)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500/50 text-xs font-semibold text-amber-300 flex items-center gap-1.5"
+                >
+                  <i data-lucide="bot" className="w-4 h-4 text-amber-400"></i>
+                  <span>Scraper Console</span>
+                </button>
+
+                {pwaPrompt && (
+                  <button
+                    onClick={() => deferredPrompt && deferredPrompt.prompt()}
+                    className="px-3 py-1.5 rounded-xl bg-cyan-600 text-white font-bold text-xs shadow-lg shadow-cyan-600/30 flex items-center gap-1"
+                  >
+                    <i data-lucide="download" className="w-4 h-4"></i>
+                    <span>Install PWA</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </header>
+
+          {/* Main Content */}
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 flex-1 w-full">
+            {/* Hero Section */}
+            <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/60 border border-slate-800 p-6 sm:p-10 mb-8 shadow-2xl">
+              <div className="max-w-3xl">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-bold mb-4">
+                  ✨ Government Jobs, Grants, Funding, Rules &amp; Scholarships
+                </div>
+                <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight leading-tight mb-4">
+                  Search &amp; discover schemes suitable for <span className="text-cyan-400">logged in user.</span>
+                </h1>
+
+                {user && (
+                  <div className="flex flex-wrap items-center gap-2 p-3 rounded-2xl bg-slate-950/80 border border-slate-800 mb-6 text-xs text-slate-300">
+                    <span className="text-slate-400 font-semibold">Active Criteria:</span>
+                    <span className="px-2 py-0.5 rounded bg-cyan-600/20 text-cyan-300 font-medium">{user.occupation}</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">{user.age} Yrs</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">{user.income_bracket}</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">{user.category}</span>
+                    <button onClick={() => setShowProfileModal(true)} className="ml-auto text-xs font-bold text-cyan-400 hover:underline">
+                      Edit Profile →
+                    </button>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search keywords (e.g. loan, startup, scholarship, recruitment, subsidy, women, student)..."
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="w-full px-5 py-4 rounded-2xl bg-slate-950 border border-slate-800 text-white text-sm focus:outline-none focus:border-cyan-500 shadow-xl"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Category Filter Tabs */}
+            <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+              <div className="flex items-center gap-2 overflow-x-auto pb-2">
+                {['All', 'Grants', 'Funding', 'Jobs', 'Scholarships', 'Rules'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => { setCategory(cat); setOnlySaved(false); }}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition border ${category === cat && !onlySaved
+                      ? 'bg-cyan-600 text-white border-cyan-500 shadow-lg shadow-cyan-600/30'
+                      : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-white'
+                      }`}
+                  >
+                    {cat === 'All' ? 'All Schemes' : cat}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setOnlySaved(!onlySaved)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold border transition ${onlySaved ? 'bg-amber-500 text-slate-950 border-amber-400' : 'bg-slate-900 text-slate-300 border-slate-800'
+                  }`}
+              >
+                Saved Schemes ({schemes.filter(s => s.is_saved).length})
+              </button>
+            </div>
+
+            {/* Schemes Grid */}
+            {loading ? (
+              <div className="py-20 text-center text-xs text-slate-400">Loading &amp; matching schemes...</div>
+            ) : displayedSchemes.length === 0 ? (
+              <div className="py-16 text-center bg-slate-900/50 rounded-3xl border border-slate-800 text-slate-400 text-xs">
+                No schemes matching current criteria.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {displayedSchemes.map((scheme) => (
+                  <div key={scheme.id} className="bg-slate-900 hover:border-cyan-500/40 border border-slate-800 rounded-3xl p-6 transition flex flex-col justify-between shadow-xl">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="px-3 py-1 text-xs font-bold rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+                          {scheme.category}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 text-xs font-extrabold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                            ⚡ {scheme.match_score}% Match
+                          </span>
+                          <button onClick={() => toggleBookmark(scheme.id)} className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white">
+                            {scheme.is_saved ? '★' : '☆'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <h3 onClick={() => setSelectedScheme(scheme)} className="text-lg font-bold text-white hover:text-cyan-300 cursor-pointer mb-2">
+                        {scheme.title}
+                      </h3>
+                      <div className="text-xs text-slate-400 mb-3">{scheme.offered_by || 'Government of India'}</div>
+
+                      {scheme.benefit_amount && (
+                        <div className="p-3 rounded-2xl bg-cyan-950/40 border border-cyan-800/30 text-cyan-200 text-xs font-semibold mb-3">
+                          ✨ {scheme.benefit_amount}
+                        </div>
+                      )}
+
+                      <p className="text-xs text-slate-300 line-clamp-3 mb-4">{scheme.description}</p>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-800 flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Deadline: <strong className="text-white">{scheme.application_deadline}</strong></span>
+                      <button onClick={() => setSelectedScheme(scheme)} className="font-bold text-cyan-400 hover:underline">
+                        View &amp; Apply →
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </main>
+
+          {/* Scheme Modal */}
+          {selectedScheme && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 text-white relative">
+                <button onClick={() => setSelectedScheme(null)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white">✕</button>
+                <div className="px-3 py-1 text-xs font-bold rounded-full bg-cyan-500/10 text-cyan-400 inline-block mb-3">
+                  {selectedScheme.category} • {selectedScheme.match_score}% User Match
+                </div>
+                <h2 className="text-2xl font-black text-white mb-2">{selectedScheme.title}</h2>
+                <div className="text-xs text-slate-400 mb-4">{selectedScheme.offered_by}</div>
+                <p className="text-sm text-slate-200 bg-slate-950 p-4 rounded-2xl border border-slate-800 mb-4">
+                  {selectedScheme.description}
+                </p>
+                <div className="text-xs space-y-1 mb-6 text-slate-300">
+                  <div><strong>Occupations:</strong> {selectedScheme.eligibility_occupations}</div>
+                  <div><strong>Age limit:</strong> {selectedScheme.eligibility_min_age} - {selectedScheme.eligibility_max_age} yrs</div>
+                  <div><strong>Benefit:</strong> {selectedScheme.benefit_amount}</div>
+                </div>
+                <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+                  <span className="text-xs text-slate-400">Deadline: {selectedScheme.application_deadline}</span>
+                  <a href={selectedScheme.source_url} target="_blank" className="px-5 py-2.5 rounded-xl bg-cyan-600 text-white font-bold text-xs">
+                    Official Application Portal ↗
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* User Profile Modal */}
+          {showProfileModal && user && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 text-white">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-lg">Edit Profile Criteria</h3>
+                  <button onClick={() => setShowProfileModal(false)} className="text-slate-400 hover:text-white">✕</button>
+                </div>
+                <form onSubmit={handleUpdateProfile} className="space-y-3 text-xs">
+                  <div>
+                    <label className="block mb-1 text-slate-400">Name / Profile Tag</label>
+                    <input
+                      type="text"
+                      value={user.name || ''}
+                      onChange={(e) => setUser({ ...user, name: e.target.value })}
+                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded-xl text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-slate-400">Age</label>
+                    <input
+                      type="number"
+                      value={user.age || 24}
+                      onChange={(e) => setUser({ ...user, age: parseInt(e.target.value, 10) })}
+                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded-xl text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-slate-400">Occupation</label>
+                    <select
+                      value={user.occupation || 'Student'}
+                      onChange={(e) => setUser({ ...user, occupation: e.target.value })}
+                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded-xl text-white"
+                    >
+                      <option value="Student">Student</option>
+                      <option value="Entrepreneur">Entrepreneur / Business Owner</option>
+                      <option value="Farmer">Farmer / Agri Worker</option>
+                      <option value="Unemployed">Unemployed / Job Seeker</option>
+                      <option value="Professional">Professional</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-slate-400">Annual Income</label>
+                    <select
+                      value={user.income_bracket || 'Under 2.5 Lakhs'}
+                      onChange={(e) => setUser({ ...user, income_bracket: e.target.value })}
+                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded-xl text-white"
+                    >
+                      <option value="Under 2.5 Lakhs">Under ₹2.5 Lakhs</option>
+                      <option value="2.5L - 5L">₹2.5 Lakhs - ₹5 Lakhs</option>
+                      <option value="5L - 10L">₹5 Lakhs - ₹10 Lakhs</option>
+                      <option value="Above 10L">Above ₹10 Lakhs</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-slate-400">Category</label>
+                    <select
+                      value={user.category || 'General'}
+                      onChange={(e) => setUser({ ...user, category: e.target.value })}
+                      className="w-full p-2 bg-slate-950 border border-slate-800 rounded-xl text-white"
+                    >
+                      <option value="General">General</option>
+                      <option value="OBC">OBC</option>
+                      <option value="SC">SC</option>
+                      <option value="ST">ST</option>
+                    </select>
+                  </div>
+                  <div className="pt-3 flex justify-end gap-2">
+                    <button type="button" onClick={() => setShowProfileModal(false)} className="px-3 py-1.5 text-slate-400">Cancel</button>
+                    <button type="submit" className="px-4 py-2 rounded-xl bg-cyan-600 text-white font-bold">Save &amp; Recalculate</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Scraper Drawer */}
+          {showScraperDrawer && (
+            <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/80 backdrop-blur-sm">
+              <div className="bg-slate-900 border-l border-slate-800 max-w-md w-full h-full p-6 text-white flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-bold text-lg">Backend Scraper Console</h3>
+                    <button onClick={() => setShowScraperDrawer(false)} className="text-slate-400 hover:text-white">✕</button>
+                  </div>
+                  <p className="text-xs text-slate-400 mb-4">
+                    Python BeautifulSoup engine indexes government jobs, grants, rules, and funding schemes into SQLite database.
+                  </p>
+                  <button onClick={triggerScraper} className="w-full py-3 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs mb-4">
+                    Trigger Python Web Scraper Now
+                  </button>
+                </div>
+                <div className="text-[11px] text-slate-500 text-center">
+                  SQLite Database: <code className="text-slate-400">schemeup.db</code>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <footer className="mt-16 border-t border-slate-800/80 bg-slate-950/90 text-slate-400 py-10 px-4">
+            <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+              <div>
+                <div className="font-extrabold text-white text-lg">SchemeUp</div>
+                <div className="text-xs text-slate-400">AI Scheme Search &amp; Recommendation Platform</div>
+              </div>
+              <div className="text-right text-xs">
+                <div className="text-slate-200">Created by: <strong className="text-pink-300">Aye &amp; Jamir</strong></div>
+                <div className="text-slate-300 mt-1">Supervised by: <strong className="text-amber-300">PB AJ</strong></div>
+              </div>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+
+</html>
